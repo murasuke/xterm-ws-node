@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>xterm.js minimal</title>
+  <link rel="stylesheet" href="https://unpkg.com/xterm/css/xterm.css">
+  <style>
+    html, body { height: 100%; margin: 0; background:#111; }
+    #terminal { height: 100%; width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="terminal"></div>
+
+  <script src="https://unpkg.com/xterm/lib/xterm.js"></script>
+  <script src="https://unpkg.com/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+
+  <script>
+    const term = new Terminal({
+      cursorBlink: true,
+      fontFamily: 'monospace',
+      fontSize: 14,
+      theme: { background: '#111' }
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById('terminal'));
+    fitAddon.fit();
+
+    // 同一オリジンで /term に接続
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}/term`);
+
+    // ブラウザ -> サーバ（キー入力）
+    term.onData(data => ws.send(data));
+
+    // リサイズ通知
+    function sendResize() {
+      const dims = term._core._renderService.dimensions; // 文字ピクセルから計算してもOK
+      fitAddon.fit();
+      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+    }
+    window.addEventListener('resize', () => {
+      fitAddon.fit();
+      ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+    });
+    // 初回送信
+    ws.addEventListener('open', sendResize);
+
+    // サーバ -> ブラウザ（PTY出力）
+    ws.addEventListener('message', ev => term.write(ev.data));
+
+    ws.addEventListener('close', () => {
+      term.write('\r\n\x1b[31m[disconnected]\x1b[0m\r\n');
+    });
+  </script>
+</body>
+</html>
